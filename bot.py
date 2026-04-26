@@ -1,20 +1,23 @@
 import os
-from dotenv import load_dotenv
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📊 Sniper AI Bot is live!\nUse /signal")
+    await update.message.reply_text("🤖 Bot is live and running!")
 
-async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔥 XAUUSD BUY\nEntry: 2350\nTP: 2365\nSL: 2338")
+def main():
+    if not TOKEN:
+        print("BOT_TOKEN is missing!")
+        return
 
-app = ApplicationBuilder().token(TOKEN).build()
+    app = Application.builder().token(TOKEN).build()
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("signal", signal))
+    app.add_handler(CommandHandler("start", start))
 
-app.run_polling()
+    print("Bot is starting...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
