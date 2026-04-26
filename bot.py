@@ -27,9 +27,9 @@ async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     now = datetime.now()
     hour = now.hour
-    day = now.weekday()   # Mon=0 ... Sun=6
+    day = now.weekday()
 
-    # Trading sessions (Nigeria time)
+    # ---------- SESSION FILTER ----------
     active_session = (
         8 <= hour < 11 or
         13 <= hour < 16 or
@@ -46,30 +46,47 @@ async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Get live price
+    # ---------- MARKET SELECTION ----------
+    if day >= 5:
+        pair = "BTCUSD"
+    else:
+        pair = "XAUUSD"
+
+    # ---------- PRICE ----------
     price = get_btc_price()
 
     if not price:
         await update.message.reply_text("⚠️ Market data unavailable.")
         return
 
-    # Weekend = BTC only
-    if day >= 5:
-        pair = "BTCUSD"
-    else:
-        pair = "XAUUSD (live BTC mode)"
-
     entry = round(price, 2)
-    tp = round(price * 1.002, 2)
-    sl = round(price * 0.998, 2)
 
+    # ---------- SNIPER ENGINE ----------
+    if 8 <= hour < 11:
+        bias = "BUY"
+        tp = round(price * 1.003, 2)
+        sl = round(price * 0.997, 2)
+
+    elif 13 <= hour < 16:
+        bias = "SELL"
+        tp = round(price * 0.997, 2)
+        sl = round(price * 1.003, 2)
+
+    else:
+        await update.message.reply_text(
+            "🟡 NO TRADE\nNo clear sniper direction."
+        )
+        return
+
+    # ---------- OUTPUT ----------
     await update.message.reply_text(
         "🤖 SNIPER AI SIGNAL\n\n"
         f"PAIR: {pair}\n"
+        f"TYPE: {bias}\n"
         f"ENTRY: {entry}\n"
         f"TP: {tp}\n"
         f"SL: {sl}\n\n"
-        "⚡ Live Market Mode Active"
+        "⚡ Sniper Engine Active"
     )
 
 # ---------- MAIN APP ----------
