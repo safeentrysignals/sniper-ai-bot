@@ -5,16 +5,16 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 TOKEN = os.getenv("BOT_TOKEN")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 Bot is live and running!")
+    await update.message.reply_text("🤖 Sniper AI Bot is live!")
+
+async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("📊 BUY XAUUSD\nEntry: 3300\nTP: 3310\nSL: 3290")
 
 def main():
-    if not TOKEN:
-        print("BOT_TOKEN is missing!")
-        return
-
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("signal", signal))
 
     print("Bot is starting...")
     app.run_polling()
