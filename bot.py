@@ -1,9 +1,20 @@
 import os
+import requests
 from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 TOKEN = os.getenv("BOT_TOKEN")
+
+# ---------- LIVE PRICE ENGINE ----------
+
+def get_btc_price():
+    try:
+        url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
+        data = requests.get(url, timeout=5).json()
+        return float(data["price"])
+    except:
+        return None
 
 # ---------- COMMANDS ----------
 
@@ -13,11 +24,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     now = datetime.now()
     hour = now.hour
     day = now.weekday()   # Mon=0 ... Sun=6
 
-    # Personal trading sessions (Nigeria time)
+    # Trading sessions (Nigeria time)
     active_session = (
         8 <= hour < 11 or
         13 <= hour < 16 or
@@ -26,7 +38,7 @@ async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not active_session:
         await update.message.reply_text(
-            "⏳ NO TRADE\nOutside your sniper trading hours.\n\n"
+            "⏳ NO TRADE\nOutside sniper trading hours.\n\n"
             "Sessions:\n"
             "8AM - 11AM\n"
             "1PM - 4PM\n"
@@ -34,18 +46,30 @@ async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # Get live price
+    price = get_btc_price()
+
+    if not price:
+        await update.message.reply_text("⚠️ Market data unavailable.")
+        return
+
     # Weekend = BTC only
     if day >= 5:
         pair = "BTCUSD"
     else:
-        pair = "XAUUSD"
+        pair = "XAUUSD (live BTC mode)"
+
+    entry = round(price, 2)
+    tp = round(price * 1.002, 2)
+    sl = round(price * 0.998, 2)
 
     await update.message.reply_text(
-        f"🤖 SNIPER AI SIGNAL\n\n"
+        "🤖 SNIPER AI SIGNAL\n\n"
         f"PAIR: {pair}\n"
-        f"STATUS: Session Active\n"
-        f"MODE: Awaiting sniper setup\n\n"
-        f"⚡ Quality over quantity"
+        f"ENTRY: {entry}\n"
+        f"TP: {tp}\n"
+        f"SL: {sl}\n\n"
+        "⚡ Live Market Mode Active"
     )
 
 # ---------- MAIN APP ----------
@@ -62,7 +86,6 @@ def main():
 
     print("Bot starting...")
 
-    # stable polling for Railway
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
