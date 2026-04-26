@@ -4,17 +4,25 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 TOKEN = os.getenv("BOT_TOKEN")
 
+# ---------- COMMANDS ----------
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🤖 Sniper AI Bot is LIVE\n\nUse /signal to get latest trade setup."
+    )
+
+async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📊 SNIPER SIGNAL\n\n"
         "PAIR: XAUUSD\n"
         "TYPE: BUY\n"
         "ENTRY: 3300\n"
         "TP: 3310\n"
-        "SL: 3290"
+        "SL: 3290\n\n"
+        "⚡ Powered by Sniper AI"
     )
-    await update.message.reply_text("🤖 Bot is live!")
+
+# ---------- MAIN APP ----------
 
 def main():
     if not TOKEN:
@@ -24,9 +32,12 @@ def main():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("signal", signal))
+    app.add_handler(CommandHandler("signal", signal))
+
     print("Bot starting...")
-    app.run_polling()
+
+    # stable polling for Railway
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
