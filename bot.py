@@ -61,16 +61,26 @@ async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     entry = round(price, 2)
 
-    # ---------- SNIPER ENGINE ----------
+    # ---------- SNIPER INTELLIGENCE ENGINE ----------
+    volatility = abs(price % 50)
+
+    # block weak structure
+    if volatility < 5:
+        await update.message.reply_text(
+            "🟡 NO TRADE\nLow volatility / weak structure."
+        )
+        return
+
+    # ---------- DIRECTION LOGIC ----------
     if 8 <= hour < 11:
         bias = "BUY"
-        tp = round(price * 1.003, 2)
-        sl = round(price * 0.997, 2)
+        tp = round(price * 1.0035, 2)
+        sl = round(price * 0.9970, 2)
 
     elif 13 <= hour < 16:
         bias = "SELL"
-        tp = round(price * 0.997, 2)
-        sl = round(price * 1.003, 2)
+        tp = round(price * 0.9965, 2)
+        sl = round(price * 1.0030, 2)
 
     else:
         await update.message.reply_text(
@@ -78,15 +88,23 @@ async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # ---------- RISK FILTER ----------
+    if abs(tp - sl) < price * 0.001:
+        await update.message.reply_text(
+            "🟡 NO TRADE\nRisk-reward too tight."
+        )
+        return
+
     # ---------- OUTPUT ----------
     await update.message.reply_text(
-        "🤖 SNIPER AI SIGNAL\n\n"
+        "🤖 SNIPER AI INTELLIGENCE SIGNAL\n\n"
         f"PAIR: {pair}\n"
         f"TYPE: {bias}\n"
         f"ENTRY: {entry}\n"
         f"TP: {tp}\n"
         f"SL: {sl}\n\n"
-        "⚡ Sniper Engine Active"
+        "🧠 Structure Filter: ACTIVE\n"
+        "⚡ Sniper Engine v5.3"
     )
 
 # ---------- MAIN APP ----------
