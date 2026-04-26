@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
@@ -12,14 +13,39 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now()
+    hour = now.hour
+    day = now.weekday()   # Mon=0 ... Sun=6
+
+    # Personal trading sessions (Nigeria time)
+    active_session = (
+        8 <= hour < 11 or
+        13 <= hour < 16 or
+        0 <= hour < 3
+    )
+
+    if not active_session:
+        await update.message.reply_text(
+            "⏳ NO TRADE\nOutside your sniper trading hours.\n\n"
+            "Sessions:\n"
+            "8AM - 11AM\n"
+            "1PM - 4PM\n"
+            "12AM - 3AM"
+        )
+        return
+
+    # Weekend = BTC only
+    if day >= 5:
+        pair = "BTCUSD"
+    else:
+        pair = "XAUUSD"
+
     await update.message.reply_text(
-        "📊 SNIPER SIGNAL\n\n"
-        "PAIR: XAUUSD\n"
-        "TYPE: BUY\n"
-        "ENTRY: 3300\n"
-        "TP: 3310\n"
-        "SL: 3290\n\n"
-        "⚡ Powered by Sniper AI"
+        f"🤖 SNIPER AI SIGNAL\n\n"
+        f"PAIR: {pair}\n"
+        f"STATUS: Session Active\n"
+        f"MODE: Awaiting sniper setup\n\n"
+        f"⚡ Quality over quantity"
     )
 
 # ---------- MAIN APP ----------
