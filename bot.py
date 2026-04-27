@@ -1,6 +1,7 @@
 import os
 import requests
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
@@ -9,10 +10,19 @@ TOKEN = os.getenv("BOT_TOKEN")
 # ---------- LIVE PRICE ENGINE ----------
 
 def get_btc_price():
+    # Binance first
     try:
         url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
         data = requests.get(url, timeout=5).json()
         return float(data["price"])
+    except:
+        pass
+
+    # Backup source: CoinGecko
+    try:
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+        data = requests.get(url, timeout=5).json()
+        return float(data["bitcoin"]["usd"])
     except:
         return None
 
@@ -25,9 +35,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    now = datetime.now()
+    # Nigeria time (Lagos / WAT)
+    now = datetime.now(ZoneInfo("Africa/Lagos"))
     hour = now.hour
-    day = now.weekday()
+    day = now.weekday()   # Mon=0 ... Sun=6
 
     # ---------- SESSION FILTER ----------
     active_session = (
@@ -83,10 +94,10 @@ async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sl = round(price * 1.0030, 2)
 
     else:
-        await update.message.reply_text(
-            "🟡 NO TRADE\nNo clear sniper direction."
-        )
-        return
+        # Midnight session (12AM - 3AM)
+        bias = "BUY"
+        tp = round(price * 1.0040, 2)
+        sl = round(price * 0.9970, 2)
 
     # ---------- RISK FILTER ----------
     if abs(tp - sl) < price * 0.001:
@@ -104,7 +115,7 @@ async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"TP: {tp}\n"
         f"SL: {sl}\n\n"
         "🧠 Structure Filter: ACTIVE\n"
-        "⚡ Sniper Engine v5.3"
+        "⚡ Sniper Engine v5.4"
     )
 
 # ---------- MAIN APP ----------
