@@ -10,12 +10,12 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
 TOKEN = os.getenv("BOT_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # REQUIRED
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 TIMEZONE = "Africa/Lagos"
 
 # ==================================================
-# TIME
+# TIME ENGINE
 # ==================================================
 def now():
     return datetime.now(ZoneInfo(TIMEZONE))
@@ -36,7 +36,7 @@ async def get_image(update, context):
     return await file.download_as_bytearray()
 
 # ==================================================
-# 🧠 REAL VISION AI (GPT-4o / Vision API)
+# 🧠 VISION AI (FIXED + SAFE JSON HANDLING)
 # ==================================================
 def vision_ai(image_bytes):
 
@@ -45,6 +45,8 @@ def vision_ai(image_bytes):
             "pair": "UNKNOWN",
             "trend": "neutral",
             "pattern": "no_api_key",
+            "support": 0,
+            "resistance": 0,
             "confidence": 0.2
         }
 
@@ -64,11 +66,9 @@ def vision_ai(image_bytes):
                     {
                         "type": "text",
                         "text": """
-You are a professional trading analyst.
+You are a professional trading chart analyst.
 
-Analyze this M15 trading chart.
-
-Return ONLY JSON:
+Analyze this M15 chart and return ONLY valid JSON (no markdown, no explanation):
 
 {
   "pair": "BTCUSD or XAUUSD",
@@ -76,7 +76,7 @@ Return ONLY JSON:
   "pattern": "candlestick pattern name",
   "support": number,
   "resistance": number,
-  "confidence": 0.0 to 1.0
+  "confidence": number between 0 and 1
 }
 """
                     },
@@ -97,19 +97,31 @@ Return ONLY JSON:
             "https://api.openai.com/v1/chat/completions",
             headers=headers,
             json=payload,
-            timeout=20
+            timeout=25
         )
 
         data = res.json()
+
         content = data["choices"][0]["message"]["content"]
+
+        # ===============================
+        # SAFE CLEANING (IMPORTANT FIX)
+        # ===============================
+        content = content.strip()
+        content = content.replace("```json", "").replace("```", "")
 
         return json.loads(content)
 
-    except:
+    except Exception as e:
+
+        print("VISION ERROR:", str(e))
+
         return {
             "pair": "UNKNOWN",
             "trend": "neutral",
             "pattern": "api_error",
+            "support": 0,
+            "resistance": 0,
             "confidence": 0.3
         }
 
@@ -117,6 +129,9 @@ Return ONLY JSON:
 # SIGNAL ENGINE
 # ==================================================
 def signal_engine(v):
+
+    if v.get("support") is None or v.get("resistance") is None:
+        return None
 
     price = (v["support"] + v["resistance"]) / 2
 
@@ -158,17 +173,20 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = "LIVE" if in_session(now().hour) else "TEST MODE"
 
     if not signal:
+
         await update.message.reply_text(
-            f"❌ NO TRADE\n\nPattern: {v['pattern']}\nConfidence: {v['confidence']}"
+            f"❌ NO TRADE\n\n"
+            f"Pattern: {v.get('pattern')}\n"
+            f"Confidence: {v.get('confidence')}"
         )
         return
 
     await update.message.reply_text(
         "🤖 REAL VISION AI BRAIN v3\n\n"
-        f"PAIR: {v['pair']}\n"
+        f"PAIR: {v.get('pair')}\n"
         f"TYPE: {signal['type']}\n"
-        f"PATTERN: {v['pattern']}\n"
-        f"CONFIDENCE: {v['confidence']}\n\n"
+        f"PATTERN: {v.get('pattern')}\n"
+        f"CONFIDENCE: {v.get('confidence')}\n\n"
         f"ENTRY: {signal['entry']}\n"
         f"SL: {signal['sl']}\n"
         f"TP1: {signal['tp1']}\n"
