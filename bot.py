@@ -36,7 +36,7 @@ async def get_image(update, context):
     return await file.download_as_bytearray()
 
 # ==================================================
-# 🧠 VISION AI (FIXED + SAFE JSON HANDLING)
+# 🧠 VISION AI (FIXED + STABLE GPT-4o)
 # ==================================================
 def vision_ai(image_bytes):
 
@@ -58,7 +58,7 @@ def vision_ai(image_bytes):
     }
 
     payload = {
-        "model": "gpt-4o-mini",
+        "model": "gpt-4o",
         "messages": [
             {
                 "role": "user",
@@ -68,7 +68,9 @@ def vision_ai(image_bytes):
                         "text": """
 You are a professional trading chart analyst.
 
-Analyze this M15 chart and return ONLY valid JSON (no markdown, no explanation):
+Analyze this M15 chart.
+
+Return ONLY valid JSON (no markdown, no explanation):
 
 {
   "pair": "BTCUSD or XAUUSD",
@@ -97,7 +99,7 @@ Analyze this M15 chart and return ONLY valid JSON (no markdown, no explanation):
             "https://api.openai.com/v1/chat/completions",
             headers=headers,
             json=payload,
-            timeout=25
+            timeout=30
         )
 
         data = res.json()
@@ -105,7 +107,7 @@ Analyze this M15 chart and return ONLY valid JSON (no markdown, no explanation):
         content = data["choices"][0]["message"]["content"]
 
         # ===============================
-        # SAFE CLEANING (IMPORTANT FIX)
+        # SAFE JSON CLEANING
         # ===============================
         content = content.strip()
         content = content.replace("```json", "").replace("```", "")
@@ -119,7 +121,7 @@ Analyze this M15 chart and return ONLY valid JSON (no markdown, no explanation):
         return {
             "pair": "UNKNOWN",
             "trend": "neutral",
-            "pattern": "api_error",
+            "pattern": f"api_error: {str(e)}",
             "support": 0,
             "resistance": 0,
             "confidence": 0.3
@@ -130,7 +132,7 @@ Analyze this M15 chart and return ONLY valid JSON (no markdown, no explanation):
 # ==================================================
 def signal_engine(v):
 
-    if v.get("support") is None or v.get("resistance") is None:
+    if not v.get("support") or not v.get("resistance"):
         return None
 
     price = (v["support"] + v["resistance"]) / 2
@@ -182,7 +184,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(
-        "🤖 REAL VISION AI BRAIN v3\n\n"
+        "🤖 REAL VISION AI BRAIN v4\n\n"
         f"PAIR: {v.get('pair')}\n"
         f"TYPE: {signal['type']}\n"
         f"PATTERN: {v.get('pattern')}\n"
@@ -192,7 +194,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"TP1: {signal['tp1']}\n"
         f"TP2: {signal['tp2']}\n\n"
         f"SESSION: {session}\n"
-        "🧠 GPT Vision Active"
+        "🧠 GPT-4o Vision Active"
     )
 
 # ==================================================
