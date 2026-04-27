@@ -1,25 +1,21 @@
 import os
 import io
-import requests
+import json
+import base64
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import requests
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-# OCR (optional upgrade)
-try:
-    import pytesseract
-    from PIL import Image
-except:
-    pytesseract = None
-    Image = None
-
 TOKEN = os.getenv("BOT_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # REQUIRED
+
 TIMEZONE = "Africa/Lagos"
 
 # ==================================================
-# TIME ENGINE
+# TIME
 # ==================================================
 def now():
     return datetime.now(ZoneInfo(TIMEZONE))
@@ -32,185 +28,162 @@ def in_session(hour):
     )
 
 # ==================================================
-# LIVE PRICE ENGINE (REAL MARKET FEED)
-# ==================================================
-def get_price(symbol="BTCUSD"):
-
-    try:
-        if symbol == "BTCUSD":
-            url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
-            return float(requests.get(url, timeout=5).json()["price"])
-
-        # fallback proxy for gold (replace later with broker API)
-        if symbol == "XAUUSD":
-            btc = get_price("BTCUSD")
-            return btc / 20  # rough proxy scaling
-
-    except:
-        return None
-
-# ==================================================
-# VISION ENGINE (OCR + STRUCTURE)
-# ==================================================
-def vision_engine(image_bytes):
-
-    if Image is None or pytesseract is None:
-        return {"pair": "UNKNOWN", "trend": "neutral", "confidence": 0.3}
-
-    img = Image.open(io.BytesIO(image_bytes))
-    text = pytesseract.image_to_string(img).upper()
-
-    pair = "UNKNOWN"
-
-    if "BTC" in text:
-        pair = "BTCUSD"
-    elif "XAU" in text or "GOLD" in text:
-        pair = "XAUUSD"
-
-    gray = img.convert("L")
-    avg = sum(gray.getdata()) / len(gray.getdata())
-
-    if avg > 145:
-        trend = "bullish"
-        confidence = 0.75
-    elif avg < 105:
-        trend = "bearish"
-        confidence = 0.75
-    else:
-        trend = "neutral"
-        confidence = 0.45
-
-    return {
-        "pair": pair,
-        "trend": trend,
-        "confidence": confidence
-    }
-
-# ==================================================
-# LIQUIDITY SWEEP DETECTOR
-# ==================================================
-def liquidity_check(price):
-
-    # simple engineered logic (replace later with ML)
-    if price % 100 < 20:
-        return "liquidity_sweep"
-
-    return "clean"
-
-# ==================================================
-# MARKET STRUCTURE ENGINE
-# ==================================================
-def structure_engine(price):
-
-    support = price - (price * 0.002)
-    resistance = price + (price * 0.002)
-
-    return support, resistance
-
-# ==================================================
-# SNIPER CONFLUENCE ENGINE
-# ==================================================
-def decision_engine(v, price):
-
-    support, resistance = structure_engine(price)
-    liquidity = liquidity_check(price)
-
-    score = 0
-
-    if v["trend"] == "bullish":
-        score += 2
-    if v["trend"] == "bearish":
-        score -= 2
-
-    if liquidity == "liquidity_sweep":
-        score += 1
-
-    session = in_session(now().hour)
-
-    if not session:
-        return None, score
-
-    if score >= 2:
-        return {
-            "type": "BUY",
-            "entry": price,
-            "sl": support,
-            "tp1": resistance,
-            "tp2": resistance + (price * 0.003)
-        }, score
-
-    if score <= -2:
-        return {
-            "type": "SELL",
-            "entry": price,
-            "sl": resistance,
-            "tp1": support,
-            "tp2": support - (price * 0.003)
-        }, score
-
-    return None, score
-
-# ==================================================
-# PHOTO HANDLER
+# IMAGE FETCH
 # ==================================================
 async def get_image(update, context):
     photo = update.message.photo[-1]
     file = await context.bot.get_file(photo.file_id)
     return await file.download_as_bytearray()
 
+# ==================================================
+# 🧠 REAL VISION AI (GPT-4o / Vision API)
+# ==================================================
+def vision_ai(image_bytes):
+
+    if not OPENAI_API_KEY:
+        return {
+            "pair": "UNKNOWN",
+            "trend": "neutral",
+            "pattern": "no_api_key",
+            "confidence": 0.2
+        }
+
+    base64_img = base64.b64encode(image_bytes).decode("utf-8")
+
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": """
+You are a professional trading analyst.
+
+Analyze this M15 trading chart.
+
+Return ONLY JSON:
+
+{
+  "pair": "BTCUSD or XAUUSD",
+  "trend": "bullish or bearish or neutral",
+  "pattern": "candlestick pattern name",
+  "support": number,
+  "resistance": number,
+  "confidence": 0.0 to 1.0
+}
+"""
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{base64_img}"
+                        }
+                    }
+                ]
+            }
+        ],
+        "temperature": 0.2
+    }
+
+    try:
+        res = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=20
+        )
+
+        data = res.json()
+        content = data["choices"][0]["message"]["content"]
+
+        return json.loads(content)
+
+    except:
+        return {
+            "pair": "UNKNOWN",
+            "trend": "neutral",
+            "pattern": "api_error",
+            "confidence": 0.3
+        }
+
+# ==================================================
+# SIGNAL ENGINE
+# ==================================================
+def signal_engine(v):
+
+    price = (v["support"] + v["resistance"]) / 2
+
+    if v["trend"] == "bullish":
+
+        return {
+            "type": "BUY",
+            "entry": price,
+            "sl": v["support"],
+            "tp1": v["resistance"],
+            "tp2": v["resistance"] + (price * 0.002)
+        }
+
+    if v["trend"] == "bearish":
+
+        return {
+            "type": "SELL",
+            "entry": price,
+            "sl": v["resistance"],
+            "tp1": v["support"],
+            "tp2": v["support"] - (price * 0.002)
+        }
+
+    return None
+
+# ==================================================
+# HANDLER
+# ==================================================
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     image_bytes = await get_image(update, context)
 
-    await update.message.reply_text("📊 Analyzing market structure...")
+    await update.message.reply_text("📊 Sending to AI Vision Brain...")
 
-    v = vision_engine(image_bytes)
+    v = vision_ai(image_bytes)
 
-    if v["pair"] == "UNKNOWN":
-        await update.message.reply_text(
-            "⚠️ Cannot detect chart pair clearly.\nSend clearer BTCUSD or XAUUSD chart."
-        )
-        return
-
-    price = get_price(v["pair"])
-
-    if not price:
-        await update.message.reply_text("⚠️ Market feed unavailable.")
-        return
-
-    signal, score = decision_engine(v, price)
+    signal = signal_engine(v)
 
     session = "LIVE" if in_session(now().hour) else "TEST MODE"
 
     if not signal:
         await update.message.reply_text(
-            f"❌ NO TRADE\n\n"
-            f"Trend: {v['trend']}\n"
-            f"Confidence: {int(v['confidence']*100)}%\n"
-            f"Score: {score}"
+            f"❌ NO TRADE\n\nPattern: {v['pattern']}\nConfidence: {v['confidence']}"
         )
         return
 
     await update.message.reply_text(
-        f"🤖 SNIPER AI FINAL BRAIN v2\n\n"
+        "🤖 REAL VISION AI BRAIN v3\n\n"
         f"PAIR: {v['pair']}\n"
         f"TYPE: {signal['type']}\n"
+        f"PATTERN: {v['pattern']}\n"
+        f"CONFIDENCE: {v['confidence']}\n\n"
         f"ENTRY: {signal['entry']}\n"
         f"SL: {signal['sl']}\n"
         f"TP1: {signal['tp1']}\n"
         f"TP2: {signal['tp2']}\n\n"
-        f"CONFIDENCE: {int(v['confidence']*100)}%\n"
-        f"SCORE: {score}\n"
-        f"SESSION: {session}\n\n"
-        f"🧠 Final Brain Active"
+        f"SESSION: {session}\n"
+        "🧠 GPT Vision Active"
     )
 
 # ==================================================
 # START
 # ==================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     await update.message.reply_text(
-        "🤖 SNIPER AI FINAL BRAIN v2 ACTIVE\n\n"
+        "🤖 REAL VISION AI BRAIN ACTIVE\n\n"
         "Send M15 chart screenshot.\nNo captions needed."
     )
 
@@ -228,7 +201,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
 
-    print("Sniper AI Final Brain v2 Running...")
+    print("Real Vision AI Brain Running...")
 
     app.run_polling(drop_pending_updates=True)
 
