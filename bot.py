@@ -34,6 +34,39 @@ def in_session(hour):
         0 <= hour < 3
     )
 
+def candle_window(now):
+    """
+    Returns:
+    start_minute, end_minute, close_minute
+    """
+
+    minute = now.minute
+
+    if 0 <= minute < 15:
+        return 0, 14, 15
+
+    if 15 <= minute < 30:
+        return 15, 29, 30
+
+    if 30 <= minute < 45:
+        return 30, 44, 45
+
+    return 45, 59, 60
+
+def next_close_time(now):
+    hour = now.hour
+    minute = now.minute
+
+    _, _, close_min = candle_window(now)
+
+    if close_min == 60:
+        close_hour = (hour + 1) % 24
+        close_min = 0
+    else:
+        close_hour = hour
+
+    return close_hour, close_min
+
 # ==================================================
 # PAIR DETECTION
 # ==================================================
@@ -52,10 +85,9 @@ def detect_pair_from_caption(text):
     return "UNKNOWN"
 
 # ==================================================
-# VISION PLACEHOLDER
+# PLACEHOLDER VISION
 # ==================================================
 def analyze_chart_image(_image_bytes):
-    # Replace later with real AI vision
     return {
         "trend": "bullish",
         "price": 43000,
@@ -64,17 +96,19 @@ def analyze_chart_image(_image_bytes):
     }
 
 # ==================================================
-# PATTERN PLACEHOLDER
+# PLACEHOLDER PATTERN
 # ==================================================
 def detect_pattern(vision):
     if vision["trend"] == "bullish":
         return "Hammer"
+
     return "Shooting Star"
 
 # ==================================================
 # SIGNAL ENGINE
 # ==================================================
 def generate_signal(pair, vision, pattern):
+
     price = float(vision["price"])
     support = float(vision["support"])
     resistance = float(vision["resistance"])
@@ -105,16 +139,16 @@ def generate_signal(pair, vision, pattern):
 # ==================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 SNIPER AI TEST MODE ACTIVE\n\n"
-        "Send M15 screenshot of XAUUSD or BTCUSD.\n"
-        "Caption example:\nBTCUSD"
+        "🤖 SNIPER AI WATCH MODE ACTIVE\n\n"
+        "Send M15 screenshot with caption:\n"
+        "BTCUSD or XAUUSD"
     )
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📸 Send chart screenshot with caption:\n"
-        "BTCUSD or XAUUSD\n\n"
-        "Signals only valid during sniper sessions."
+        "📸 Upload M15 chart screenshot.\n"
+        "Use caption:\nBTCUSD or XAUUSD\n\n"
+        "Bot will analyze current candle and request confirmation screenshot at close."
     )
 
 # ==================================================
@@ -134,37 +168,40 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await update.message.reply_text("📊 Screenshot received. Analyzing...")
+    await update.message.reply_text("📊 Screenshot received. Reading M15 candle...")
 
-    # Download image
+    # Download photo
     photo = update.message.photo[-1]
     file = await context.bot.get_file(photo.file_id)
     image_bytes = await file.download_as_bytearray()
 
-    # AI placeholders
+    # Analyze placeholders
     vision = analyze_chart_image(image_bytes)
     pattern = detect_pattern(vision)
     signal = generate_signal(pair, vision, pattern)
 
-    # Session check
-    session_live = in_session(hour)
+    # Time window
+    start_m, end_m, _ = candle_window(now)
+    close_h, close_m = next_close_time(now)
 
-    if session_live:
-        mode = "🟢 LIVE SESSION"
+    # Session status
+    if in_session(hour):
+        session_text = "🟢 LIVE SESSION"
     else:
-        mode = "🟡 TEST MODE (outside session)"
+        session_text = "🟡 Outside sniper session"
 
+    # WATCH MODE (unfinished candle)
     await update.message.reply_text(
-        f"🤖 SNIPER AI ANALYSIS\n\n"
-        f"{mode}\n\n"
-        f"PAIR: {signal['pair']}\n"
-        f"TYPE: {signal['type']}\n"
-        f"ENTRY: {signal['entry']}\n"
-        f"SL: {signal['sl']}\n"
-        f"TP1: {signal['tp1']}\n"
-        f"TP2: {signal['tp2']}\n"
-        f"LOT: 0.01\n\n"
-        f"Pattern: {signal['pattern']}"
+        f"🤖 SNIPER AI WATCH MODE\n\n"
+        f"{session_text}\n\n"
+        f"PAIR: {pair}\n"
+        f"Current Candle: {now.hour:02d}:{start_m:02d} - {now.hour:02d}:{end_m:02d}\n\n"
+        f"Bias: {signal['type']} Watch\n"
+        f"Pattern Forming: {signal['pattern']}\n\n"
+        f"Price Watch Level: {signal['entry']}\n"
+        f"TP Zone: {signal['tp1']} / {signal['tp2']}\n\n"
+        f"⏳ Candle still open.\n"
+        f"Send new screenshot at {close_h:02d}:{close_m:02d} for confirmation."
     )
 
 # ==================================================
@@ -182,7 +219,7 @@ def main():
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
 
-    print("Sniper AI Test Mode running...")
+    print("Sniper AI Watch Mode running...")
 
     app.run_polling(drop_pending_updates=True)
 
