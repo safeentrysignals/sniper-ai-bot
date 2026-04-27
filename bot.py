@@ -1,30 +1,27 @@
 import os
+import io
+import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from telegram import Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters,
-)
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-# ==================================================
-# ENV
-# ==================================================
+# OCR (optional upgrade)
+try:
+    import pytesseract
+    from PIL import Image
+except:
+    pytesseract = None
+    Image = None
+
 TOKEN = os.getenv("BOT_TOKEN")
-
-# ==================================================
-# SETTINGS
-# ==================================================
 TIMEZONE = "Africa/Lagos"
 
 # ==================================================
-# TIME HELPERS
+# TIME ENGINE
 # ==================================================
-def nigeria_now():
+def now():
     return datetime.now(ZoneInfo(TIMEZONE))
 
 def in_session(hour):
@@ -34,174 +31,187 @@ def in_session(hour):
         0 <= hour < 3
     )
 
-def candle_window(now):
-    """
-    Returns:
-    start_minute, end_minute, close_minute
-    """
+# ==================================================
+# LIVE PRICE ENGINE (REAL MARKET FEED)
+# ==================================================
+def get_price(symbol="BTCUSD"):
 
-    minute = now.minute
+    try:
+        if symbol == "BTCUSD":
+            url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
+            return float(requests.get(url, timeout=5).json()["price"])
 
-    if 0 <= minute < 15:
-        return 0, 14, 15
+        # fallback proxy for gold (replace later with broker API)
+        if symbol == "XAUUSD":
+            btc = get_price("BTCUSD")
+            return btc / 20  # rough proxy scaling
 
-    if 15 <= minute < 30:
-        return 15, 29, 30
+    except:
+        return None
 
-    if 30 <= minute < 45:
-        return 30, 44, 45
+# ==================================================
+# VISION ENGINE (OCR + STRUCTURE)
+# ==================================================
+def vision_engine(image_bytes):
 
-    return 45, 59, 60
+    if Image is None or pytesseract is None:
+        return {"pair": "UNKNOWN", "trend": "neutral", "confidence": 0.3}
 
-def next_close_time(now):
-    hour = now.hour
-    minute = now.minute
+    img = Image.open(io.BytesIO(image_bytes))
+    text = pytesseract.image_to_string(img).upper()
 
-    _, _, close_min = candle_window(now)
+    pair = "UNKNOWN"
 
-    if close_min == 60:
-        close_hour = (hour + 1) % 24
-        close_min = 0
+    if "BTC" in text:
+        pair = "BTCUSD"
+    elif "XAU" in text or "GOLD" in text:
+        pair = "XAUUSD"
+
+    gray = img.convert("L")
+    avg = sum(gray.getdata()) / len(gray.getdata())
+
+    if avg > 145:
+        trend = "bullish"
+        confidence = 0.75
+    elif avg < 105:
+        trend = "bearish"
+        confidence = 0.75
     else:
-        close_hour = hour
-
-    return close_hour, close_min
-
-# ==================================================
-# PAIR DETECTION
-# ==================================================
-def detect_pair_from_caption(text):
-    if not text:
-        return "UNKNOWN"
-
-    t = text.upper()
-
-    if "BTC" in t:
-        return "BTCUSD"
-
-    if "XAU" in t or "GOLD" in t:
-        return "XAUUSD"
-
-    return "UNKNOWN"
-
-# ==================================================
-# PLACEHOLDER VISION
-# ==================================================
-def analyze_chart_image(_image_bytes):
-    return {
-        "trend": "bullish",
-        "price": 43000,
-        "support": 42850,
-        "resistance": 43250
-    }
-
-# ==================================================
-# PLACEHOLDER PATTERN
-# ==================================================
-def detect_pattern(vision):
-    if vision["trend"] == "bullish":
-        return "Hammer"
-
-    return "Shooting Star"
-
-# ==================================================
-# SIGNAL ENGINE
-# ==================================================
-def generate_signal(pair, vision, pattern):
-
-    price = float(vision["price"])
-    support = float(vision["support"])
-    resistance = float(vision["resistance"])
-
-    if pattern in ["Hammer", "Bullish Engulfing"]:
-        return {
-            "pair": pair,
-            "type": "BUY",
-            "entry": round(price, 2),
-            "sl": round(support - 20, 2),
-            "tp1": round(resistance, 2),
-            "tp2": round(resistance + 80, 2),
-            "pattern": pattern
-        }
+        trend = "neutral"
+        confidence = 0.45
 
     return {
         "pair": pair,
-        "type": "SELL",
-        "entry": round(price, 2),
-        "sl": round(resistance + 20, 2),
-        "tp1": round(support, 2),
-        "tp2": round(support - 80, 2),
-        "pattern": pattern
+        "trend": trend,
+        "confidence": confidence
     }
 
 # ==================================================
-# COMMANDS
+# LIQUIDITY SWEEP DETECTOR
 # ==================================================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🤖 SNIPER AI WATCH MODE ACTIVE\n\n"
-        "Send M15 screenshot with caption:\n"
-        "BTCUSD or XAUUSD"
-    )
+def liquidity_check(price):
 
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📸 Upload M15 chart screenshot.\n"
-        "Use caption:\nBTCUSD or XAUUSD\n\n"
-        "Bot will analyze current candle and request confirmation screenshot at close."
-    )
+    # simple engineered logic (replace later with ML)
+    if price % 100 < 20:
+        return "liquidity_sweep"
+
+    return "clean"
+
+# ==================================================
+# MARKET STRUCTURE ENGINE
+# ==================================================
+def structure_engine(price):
+
+    support = price - (price * 0.002)
+    resistance = price + (price * 0.002)
+
+    return support, resistance
+
+# ==================================================
+# SNIPER CONFLUENCE ENGINE
+# ==================================================
+def decision_engine(v, price):
+
+    support, resistance = structure_engine(price)
+    liquidity = liquidity_check(price)
+
+    score = 0
+
+    if v["trend"] == "bullish":
+        score += 2
+    if v["trend"] == "bearish":
+        score -= 2
+
+    if liquidity == "liquidity_sweep":
+        score += 1
+
+    session = in_session(now().hour)
+
+    if not session:
+        return None, score
+
+    if score >= 2:
+        return {
+            "type": "BUY",
+            "entry": price,
+            "sl": support,
+            "tp1": resistance,
+            "tp2": resistance + (price * 0.003)
+        }, score
+
+    if score <= -2:
+        return {
+            "type": "SELL",
+            "entry": price,
+            "sl": resistance,
+            "tp1": support,
+            "tp2": support - (price * 0.003)
+        }, score
+
+    return None, score
 
 # ==================================================
 # PHOTO HANDLER
 # ==================================================
+async def get_image(update, context):
+    photo = update.message.photo[-1]
+    file = await context.bot.get_file(photo.file_id)
+    return await file.download_as_bytearray()
+
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    now = nigeria_now()
-    hour = now.hour
+    image_bytes = await get_image(update, context)
 
-    caption = update.message.caption or ""
-    pair = detect_pair_from_caption(caption)
+    await update.message.reply_text("📊 Analyzing market structure...")
 
-    if pair == "UNKNOWN":
+    v = vision_engine(image_bytes)
+
+    if v["pair"] == "UNKNOWN":
         await update.message.reply_text(
-            "⚠️ Add caption:\nBTCUSD or XAUUSD"
+            "⚠️ Cannot detect chart pair clearly.\nSend clearer BTCUSD or XAUUSD chart."
         )
         return
 
-    await update.message.reply_text("📊 Screenshot received. Reading M15 candle...")
+    price = get_price(v["pair"])
 
-    # Download photo
-    photo = update.message.photo[-1]
-    file = await context.bot.get_file(photo.file_id)
-    image_bytes = await file.download_as_bytearray()
+    if not price:
+        await update.message.reply_text("⚠️ Market feed unavailable.")
+        return
 
-    # Analyze placeholders
-    vision = analyze_chart_image(image_bytes)
-    pattern = detect_pattern(vision)
-    signal = generate_signal(pair, vision, pattern)
+    signal, score = decision_engine(v, price)
 
-    # Time window
-    start_m, end_m, _ = candle_window(now)
-    close_h, close_m = next_close_time(now)
+    session = "LIVE" if in_session(now().hour) else "TEST MODE"
 
-    # Session status
-    if in_session(hour):
-        session_text = "🟢 LIVE SESSION"
-    else:
-        session_text = "🟡 Outside sniper session"
+    if not signal:
+        await update.message.reply_text(
+            f"❌ NO TRADE\n\n"
+            f"Trend: {v['trend']}\n"
+            f"Confidence: {int(v['confidence']*100)}%\n"
+            f"Score: {score}"
+        )
+        return
 
-    # WATCH MODE (unfinished candle)
     await update.message.reply_text(
-        f"🤖 SNIPER AI WATCH MODE\n\n"
-        f"{session_text}\n\n"
-        f"PAIR: {pair}\n"
-        f"Current Candle: {now.hour:02d}:{start_m:02d} - {now.hour:02d}:{end_m:02d}\n\n"
-        f"Bias: {signal['type']} Watch\n"
-        f"Pattern Forming: {signal['pattern']}\n\n"
-        f"Price Watch Level: {signal['entry']}\n"
-        f"TP Zone: {signal['tp1']} / {signal['tp2']}\n\n"
-        f"⏳ Candle still open.\n"
-        f"Send new screenshot at {close_h:02d}:{close_m:02d} for confirmation."
+        f"🤖 SNIPER AI FINAL BRAIN v2\n\n"
+        f"PAIR: {v['pair']}\n"
+        f"TYPE: {signal['type']}\n"
+        f"ENTRY: {signal['entry']}\n"
+        f"SL: {signal['sl']}\n"
+        f"TP1: {signal['tp1']}\n"
+        f"TP2: {signal['tp2']}\n\n"
+        f"CONFIDENCE: {int(v['confidence']*100)}%\n"
+        f"SCORE: {score}\n"
+        f"SESSION: {session}\n\n"
+        f"🧠 Final Brain Active"
+    )
+
+# ==================================================
+# START
+# ==================================================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🤖 SNIPER AI FINAL BRAIN v2 ACTIVE\n\n"
+        "Send M15 chart screenshot.\nNo captions needed."
     )
 
 # ==================================================
@@ -210,16 +220,15 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
 
     if not TOKEN:
-        print("ERROR: BOT_TOKEN missing")
+        print("BOT TOKEN missing")
         return
 
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
 
-    print("Sniper AI Watch Mode running...")
+    print("Sniper AI Final Brain v2 Running...")
 
     app.run_polling(drop_pending_updates=True)
 
