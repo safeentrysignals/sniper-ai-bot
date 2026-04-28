@@ -35,15 +35,15 @@ async def get_image(update, context):
     return await file.download_as_bytearray()
 
 # ==================================================
-# 🧠 SAFE VISION AI ENGINE (FIXED)
+# 🧠 SAFE VISION ENGINE (ULTRA STABLE)
 # ==================================================
 def vision_ai(image_bytes):
 
     if not OPENAI_API_KEY:
         return {
-            "pair": "UNKNOWN",
+            "pair": "NO_API_KEY",
             "trend": "neutral",
-            "pattern": "no_api_key",
+            "pattern": "missing_key",
             "support": 0,
             "resistance": 0,
             "confidence": 0.2
@@ -65,17 +65,17 @@ def vision_ai(image_bytes):
                     {
                         "type": "text",
                         "text": """
-You are a professional trading analyst.
+Analyze this M15 trading chart.
 
-Analyze this M15 chart and return ONLY valid JSON:
+Return ONLY valid JSON:
 
 {
   "pair": "BTCUSD or XAUUSD",
   "trend": "bullish or bearish or neutral",
   "pattern": "candlestick pattern",
-  "support": number,
-  "resistance": number,
-  "confidence": number between 0 and 1
+  "support": 0,
+  "resistance": 0,
+  "confidence": 0.0
 }
 """
                     },
@@ -102,23 +102,27 @@ Analyze this M15 chart and return ONLY valid JSON:
         data = res.json()
 
         # ===========================
-        # HARD ERROR HANDLING
+        # DEBUG REAL RESPONSE
         # ===========================
+        print("OPENAI RESPONSE:", data)
+
+        # HANDLE OPENAI ERROR
         if "error" in data:
             return {
-                "pair": "UNKNOWN",
+                "pair": "OPENAI_ERROR",
                 "trend": "neutral",
-                "pattern": f"openai_error: {data['error'].get('message', 'unknown')}",
+                "pattern": data["error"].get("message", "unknown_error"),
                 "support": 0,
                 "resistance": 0,
                 "confidence": 0.3
             }
 
+        # HANDLE MISSING CHOICES
         if "choices" not in data:
             return {
-                "pair": "UNKNOWN",
+                "pair": "NO_CHOICES",
                 "trend": "neutral",
-                "pattern": "no_choices_returned",
+                "pattern": str(data),
                 "support": 0,
                 "resistance": 0,
                 "confidence": 0.3
@@ -126,19 +130,18 @@ Analyze this M15 chart and return ONLY valid JSON:
 
         content = data["choices"][0]["message"]["content"]
 
-        # CLEAN RESPONSE
         content = content.strip().replace("```json", "").replace("```", "")
 
         return json.loads(content)
 
     except Exception as e:
 
-        print("VISION ERROR:", str(e))
+        print("VISION EXCEPTION:", str(e))
 
         return {
-            "pair": "UNKNOWN",
+            "pair": "EXCEPTION",
             "trend": "neutral",
-            "pattern": f"exception: {str(e)}",
+            "pattern": str(e),
             "support": 0,
             "resistance": 0,
             "confidence": 0.3
@@ -190,15 +193,17 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = "LIVE" if in_session(now().hour) else "TEST MODE"
 
     if not signal:
+
         await update.message.reply_text(
             f"❌ NO TRADE\n\n"
+            f"Pair: {v.get('pair')}\n"
             f"Pattern: {v.get('pattern')}\n"
             f"Confidence: {v.get('confidence')}"
         )
         return
 
     await update.message.reply_text(
-        "🤖 SNIPER AI VISION ENGINE v5\n\n"
+        "🤖 SNIPER AI VISION ENGINE v6\n\n"
         f"PAIR: {v.get('pair')}\n"
         f"TYPE: {signal['type']}\n"
         f"PATTERN: {v.get('pattern')}\n"
@@ -208,7 +213,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"TP1: {signal['tp1']}\n"
         f"TP2: {signal['tp2']}\n\n"
         f"SESSION: {session}\n"
-        "🧠 GPT-4o Vision Active"
+        "🧠 STABLE GPT-4o VISION ACTIVE"
     )
 
 # ==================================================
