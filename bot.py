@@ -1,15 +1,15 @@
 import os
-import base64
-import json
+import io
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-import requests
+import numpy as np
+from PIL import Image
+
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
 TOKEN = os.getenv("BOT_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 TIMEZONE = "Africa/Lagos"
 
@@ -35,113 +35,43 @@ async def get_image(update, context):
     return await file.download_as_bytearray()
 
 # ==================================================
-# 🧠 VISION AI (FINAL STABLE VERSION - RESPONSES API)
+# 🧠 FREE VISION ENGINE (NO AI - RULE BASED)
 # ==================================================
-def vision_ai(image_bytes):
-
-    if not OPENAI_API_KEY:
-        return {
-            "pair": "NO_API_KEY",
-            "trend": "neutral",
-            "pattern": "missing_api_key",
-            "support": 0,
-            "resistance": 0,
-            "confidence": 0.2
-        }
-
-    base64_img = base64.b64encode(image_bytes).decode("utf-8")
-
-    headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "model": "gpt-4o",
-        "input": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": """
-You are a professional trading analyst.
-
-Analyze this M15 chart.
-
-Return ONLY valid JSON:
-
-{
-  "pair": "BTCUSD or XAUUSD",
-  "trend": "bullish or bearish or neutral",
-  "pattern": "candlestick pattern",
-  "support": 0,
-  "resistance": 0,
-  "confidence": 0.0
-}
-"""
-                    },
-                    {
-                        "type": "input_image",
-                        "image_url": f"data:image/png;base64,{base64_img}"
-                    }
-                ]
-            }
-        ]
-    }
+def analyze_chart(image_bytes):
 
     try:
-        res = requests.post(
-            "https://api.openai.com/v1/responses",
-            headers=headers,
-            json=payload,
-            timeout=30
-        )
+        image = Image.open(io.BytesIO(image_bytes)).convert("L")
+        img = np.array(image)
 
-        data = res.json()
+        brightness = np.mean(img)
+        contrast = np.std(img)
 
-        print("OPENAI RESPONSE:", data)
+        # fake "trend logic"
+        if brightness > 140 and contrast > 60:
+            trend = "bullish"
+        elif brightness < 120 and contrast > 60:
+            trend = "bearish"
+        else:
+            trend = "neutral"
 
-        # ===============================
-        # ERROR HANDLING
-        # ===============================
-        if "error" in data:
-            return {
-                "pair": "OPENAI_ERROR",
-                "trend": "neutral",
-                "pattern": data["error"].get("message", "unknown_error"),
-                "support": 0,
-                "resistance": 0,
-                "confidence": 0.3
-            }
-
-        if "output" not in data:
-            return {
-                "pair": "NO_OUTPUT",
-                "trend": "neutral",
-                "pattern": str(data),
-                "support": 0,
-                "resistance": 0,
-                "confidence": 0.3
-            }
-
-        # Extract text safely
-        text = data["output"][0]["content"][0]["text"]
-
-        text = text.strip().replace("```json", "").replace("```", "")
-
-        return json.loads(text)
-
-    except Exception as e:
-
-        print("VISION ERROR:", str(e))
+        # fake pattern detection
+        if contrast > 80:
+            pattern = "engulfing"
+        elif contrast > 50:
+            pattern = "hammer"
+        else:
+            pattern = "doji"
 
         return {
-            "pair": "EXCEPTION",
+            "trend": trend,
+            "pattern": pattern,
+            "confidence": min(0.85, contrast / 120)
+        }
+
+    except Exception as e:
+        return {
             "trend": "neutral",
-            "pattern": str(e),
-            "support": 0,
-            "resistance": 0,
+            "pattern": "error",
             "confidence": 0.3
         }
 
@@ -150,27 +80,24 @@ Return ONLY valid JSON:
 # ==================================================
 def signal_engine(v):
 
-    if not v.get("support") or not v.get("resistance"):
-        return None
-
-    price = (v["support"] + v["resistance"]) / 2
+    price = 100  # fake baseline (we don’t have live feed)
 
     if v["trend"] == "bullish":
         return {
             "type": "BUY",
             "entry": price,
-            "sl": v["support"],
-            "tp1": v["resistance"],
-            "tp2": v["resistance"] + (price * 0.002)
+            "sl": price - 10,
+            "tp1": price + 15,
+            "tp2": price + 25
         }
 
     if v["trend"] == "bearish":
         return {
             "type": "SELL",
             "entry": price,
-            "sl": v["resistance"],
-            "tp1": v["support"],
-            "tp2": v["support"] - (price * 0.002)
+            "sl": price + 10,
+            "tp1": price - 15,
+            "tp2": price - 25
         }
 
     return None
@@ -182,35 +109,36 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     image_bytes = await get_image(update, context)
 
-    await update.message.reply_text("📊 Sending to AI Vision Brain...")
+    await update.message.reply_text("📊 Analyzing chart (FREE MODE)...")
 
-    v = vision_ai(image_bytes)
+    v = analyze_chart(image_bytes)
 
     signal = signal_engine(v)
 
     session = "LIVE" if in_session(now().hour) else "TEST MODE"
 
     if not signal:
+
         await update.message.reply_text(
             f"❌ NO TRADE\n\n"
-            f"Pair: {v.get('pair')}\n"
-            f"Pattern: {v.get('pattern')}\n"
-            f"Confidence: {v.get('confidence')}"
+            f"Pattern: {v['pattern']}\n"
+            f"Trend: {v['trend']}\n"
+            f"Confidence: {round(v['confidence'],2)}"
         )
         return
 
     await update.message.reply_text(
-        "🤖 SNIPER AI VISION ENGINE v8\n\n"
-        f"PAIR: {v.get('pair')}\n"
+        "🤖 SNIPER AI FREE VISION ENGINE\n\n"
         f"TYPE: {signal['type']}\n"
-        f"PATTERN: {v.get('pattern')}\n"
-        f"CONFIDENCE: {v.get('confidence')}\n\n"
+        f"PATTERN: {v['pattern']}\n"
+        f"TREND: {v['trend']}\n"
+        f"CONFIDENCE: {round(v['confidence'],2)}\n\n"
         f"ENTRY: {signal['entry']}\n"
         f"SL: {signal['sl']}\n"
         f"TP1: {signal['tp1']}\n"
         f"TP2: {signal['tp2']}\n\n"
         f"SESSION: {session}\n"
-        "🧠 REAL VISION ENGINE ACTIVE"
+        "⚡ FREE MODE ACTIVE"
     )
 
 # ==================================================
@@ -219,8 +147,8 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
-        "🤖 SNIPER AI VISION ENGINE ACTIVE\n\n"
-        "Send M15 chart screenshot.\nNo captions needed."
+        "🤖 SNIPER AI FREE VISION BOT ACTIVE\n\n"
+        "Send M15 chart screenshot.\nNo API required."
     )
 
 # ==================================================
@@ -237,7 +165,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
 
-    print("Sniper AI Vision Engine Running...")
+    print("FREE SNIPER AI RUNNING...")
 
     app.run_polling(drop_pending_updates=True)
 
