@@ -35,7 +35,7 @@ async def get_image(update, context):
     return await file.download_as_bytearray()
 
 # ==================================================
-# 🧠 SAFE VISION ENGINE (ULTRA STABLE)
+# 🧠 VISION AI (FINAL STABLE VERSION - RESPONSES API)
 # ==================================================
 def vision_ai(image_bytes):
 
@@ -43,7 +43,7 @@ def vision_ai(image_bytes):
         return {
             "pair": "NO_API_KEY",
             "trend": "neutral",
-            "pattern": "missing_key",
+            "pattern": "missing_api_key",
             "support": 0,
             "resistance": 0,
             "confidence": 0.2
@@ -58,14 +58,16 @@ def vision_ai(image_bytes):
 
     payload = {
         "model": "gpt-4o",
-        "messages": [
+        "input": [
             {
                 "role": "user",
                 "content": [
                     {
-                        "type": "text",
+                        "type": "input_text",
                         "text": """
-Analyze this M15 trading chart.
+You are a professional trading analyst.
+
+Analyze this M15 chart.
 
 Return ONLY valid JSON:
 
@@ -80,20 +82,17 @@ Return ONLY valid JSON:
 """
                     },
                     {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{base64_img}"
-                        }
+                        "type": "input_image",
+                        "image_url": f"data:image/png;base64,{base64_img}"
                     }
                 ]
             }
-        ],
-        "temperature": 0.2
+        ]
     }
 
     try:
         res = requests.post(
-            "https://api.openai.com/v1/chat/completions",
+            "https://api.openai.com/v1/responses",
             headers=headers,
             json=payload,
             timeout=30
@@ -101,12 +100,11 @@ Return ONLY valid JSON:
 
         data = res.json()
 
-        # ===========================
-        # DEBUG REAL RESPONSE
-        # ===========================
         print("OPENAI RESPONSE:", data)
 
-        # HANDLE OPENAI ERROR
+        # ===============================
+        # ERROR HANDLING
+        # ===============================
         if "error" in data:
             return {
                 "pair": "OPENAI_ERROR",
@@ -117,10 +115,9 @@ Return ONLY valid JSON:
                 "confidence": 0.3
             }
 
-        # HANDLE MISSING CHOICES
-        if "choices" not in data:
+        if "output" not in data:
             return {
-                "pair": "NO_CHOICES",
+                "pair": "NO_OUTPUT",
                 "trend": "neutral",
                 "pattern": str(data),
                 "support": 0,
@@ -128,15 +125,16 @@ Return ONLY valid JSON:
                 "confidence": 0.3
             }
 
-        content = data["choices"][0]["message"]["content"]
+        # Extract text safely
+        text = data["output"][0]["content"][0]["text"]
 
-        content = content.strip().replace("```json", "").replace("```", "")
+        text = text.strip().replace("```json", "").replace("```", "")
 
-        return json.loads(content)
+        return json.loads(text)
 
     except Exception as e:
 
-        print("VISION EXCEPTION:", str(e))
+        print("VISION ERROR:", str(e))
 
         return {
             "pair": "EXCEPTION",
@@ -193,7 +191,6 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = "LIVE" if in_session(now().hour) else "TEST MODE"
 
     if not signal:
-
         await update.message.reply_text(
             f"❌ NO TRADE\n\n"
             f"Pair: {v.get('pair')}\n"
@@ -203,7 +200,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(
-        "🤖 SNIPER AI VISION ENGINE v6\n\n"
+        "🤖 SNIPER AI VISION ENGINE v8\n\n"
         f"PAIR: {v.get('pair')}\n"
         f"TYPE: {signal['type']}\n"
         f"PATTERN: {v.get('pattern')}\n"
@@ -213,7 +210,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"TP1: {signal['tp1']}\n"
         f"TP2: {signal['tp2']}\n\n"
         f"SESSION: {session}\n"
-        "🧠 STABLE GPT-4o VISION ACTIVE"
+        "🧠 REAL VISION ENGINE ACTIVE"
     )
 
 # ==================================================
