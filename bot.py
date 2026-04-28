@@ -1,7 +1,6 @@
 import os
-import io
-import json
 import base64
+import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -36,7 +35,7 @@ async def get_image(update, context):
     return await file.download_as_bytearray()
 
 # ==================================================
-# 🧠 VISION AI (FIXED + STABLE GPT-4o)
+# 🧠 SAFE VISION AI ENGINE (FIXED)
 # ==================================================
 def vision_ai(image_bytes):
 
@@ -66,16 +65,14 @@ def vision_ai(image_bytes):
                     {
                         "type": "text",
                         "text": """
-You are a professional trading chart analyst.
+You are a professional trading analyst.
 
-Analyze this M15 chart.
-
-Return ONLY valid JSON (no markdown, no explanation):
+Analyze this M15 chart and return ONLY valid JSON:
 
 {
   "pair": "BTCUSD or XAUUSD",
   "trend": "bullish or bearish or neutral",
-  "pattern": "candlestick pattern name",
+  "pattern": "candlestick pattern",
   "support": number,
   "resistance": number,
   "confidence": number between 0 and 1
@@ -104,13 +101,33 @@ Return ONLY valid JSON (no markdown, no explanation):
 
         data = res.json()
 
+        # ===========================
+        # HARD ERROR HANDLING
+        # ===========================
+        if "error" in data:
+            return {
+                "pair": "UNKNOWN",
+                "trend": "neutral",
+                "pattern": f"openai_error: {data['error'].get('message', 'unknown')}",
+                "support": 0,
+                "resistance": 0,
+                "confidence": 0.3
+            }
+
+        if "choices" not in data:
+            return {
+                "pair": "UNKNOWN",
+                "trend": "neutral",
+                "pattern": "no_choices_returned",
+                "support": 0,
+                "resistance": 0,
+                "confidence": 0.3
+            }
+
         content = data["choices"][0]["message"]["content"]
 
-        # ===============================
-        # SAFE JSON CLEANING
-        # ===============================
-        content = content.strip()
-        content = content.replace("```json", "").replace("```", "")
+        # CLEAN RESPONSE
+        content = content.strip().replace("```json", "").replace("```", "")
 
         return json.loads(content)
 
@@ -121,7 +138,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         return {
             "pair": "UNKNOWN",
             "trend": "neutral",
-            "pattern": f"api_error: {str(e)}",
+            "pattern": f"exception: {str(e)}",
             "support": 0,
             "resistance": 0,
             "confidence": 0.3
@@ -138,7 +155,6 @@ def signal_engine(v):
     price = (v["support"] + v["resistance"]) / 2
 
     if v["trend"] == "bullish":
-
         return {
             "type": "BUY",
             "entry": price,
@@ -148,7 +164,6 @@ def signal_engine(v):
         }
 
     if v["trend"] == "bearish":
-
         return {
             "type": "SELL",
             "entry": price,
@@ -175,7 +190,6 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = "LIVE" if in_session(now().hour) else "TEST MODE"
 
     if not signal:
-
         await update.message.reply_text(
             f"❌ NO TRADE\n\n"
             f"Pattern: {v.get('pattern')}\n"
@@ -184,7 +198,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(
-        "🤖 REAL VISION AI BRAIN v4\n\n"
+        "🤖 SNIPER AI VISION ENGINE v5\n\n"
         f"PAIR: {v.get('pair')}\n"
         f"TYPE: {signal['type']}\n"
         f"PATTERN: {v.get('pattern')}\n"
@@ -198,12 +212,12 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ==================================================
-# START
+# START COMMAND
 # ==================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
-        "🤖 REAL VISION AI BRAIN ACTIVE\n\n"
+        "🤖 SNIPER AI VISION ENGINE ACTIVE\n\n"
         "Send M15 chart screenshot.\nNo captions needed."
     )
 
@@ -221,7 +235,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
 
-    print("Real Vision AI Brain Running...")
+    print("Sniper AI Vision Engine Running...")
 
     app.run_polling(drop_pending_updates=True)
 
