@@ -1,4 +1,4 @@
 python-telegram-bot==20.7
 pillow
-opencv-python-headless
 numpy
+opencv-python-headless
